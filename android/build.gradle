@@ -65,11 +65,10 @@ repositories {
 
 dependencies {
     implementation 'net.java.dev.jna:jna:5.13.0@aar'
-    implementation group: 'com.alphacephei', name: 'vosk-android', version: '0.3.47'
+    implementation group: 'com.alphacephei', name: 'vosk-android', version: '0.3.50'
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
-    // ✅ ВАЖНО для Capacitor 8: зависимость через Maven-артефакт
-    implementation "com.getcapacitor:capacitor-android:${project.hasProperty('capacitorVersion') ? rootProject.ext.capacitorVersion : '8.0.0'}"
+    implementation project(':capacitor-android')
 
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     testImplementation "junit:junit:$junitVersion"

@@ -46,8 +46,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 
     sourceSets {
@@ -65,7 +65,7 @@ repositories {
 
 dependencies {
     implementation 'net.java.dev.jna:jna:5.13.0@aar'
-    implementation group: 'com.alphacephei', name: 'vosk-android', version: '0.3.50'
+    implementation group: 'com.alphacephei', name: 'vosk-android', version: '0.3.75'
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
     implementation project(':capacitor-android')

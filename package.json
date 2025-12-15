@@ -22,14 +22,14 @@
     "Package.swift",
     "CapacitorCommunityVosk.podspec"
   ],
-  "author": "rubendsm",
+  "author": "Platon42",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rubendsm/capacitor-vosk-offline-speech-recognition.git"
+    "url": "git+https://github.com/Platon42/capacitor-vosk-offline-speech-recognition"
   },
   "bugs": {
-    "url": "https://github.com/rubendsm/capacitor-vosk-offline-speech-recognition.git/issues"
+    "url": "https://github.com/Platon42/capacitor-vosk-offline-speech-recognition"
   },
   "keywords": ["capacitor", "plugin", "native"],
   "scripts": {
@@ -44,6 +44,7 @@
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api VoskPlugin --output-readme README.md --output-json dist/docs.json",
     "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "prepare": "npm run build",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build"

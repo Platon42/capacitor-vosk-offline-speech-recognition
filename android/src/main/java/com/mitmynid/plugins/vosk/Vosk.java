@@ -1,50 +1,59 @@
 package com.mitmynid.plugins.vosk;
 
 import android.content.Context;
-import android.content.res.AssetManager;
 import android.util.Log;
 
-import org.vosk.LibVosk;
 import org.vosk.Model;
 import org.vosk.Recognizer;
-import org.vosk.android.SpeechService;
 import org.vosk.android.RecognitionListener;
+import org.vosk.android.SpeechService;
 import org.vosk.android.StorageService;
 
 import java.io.IOException;
-import java.io.InputStream;
 
-public class Vosk implements RecognitionListener {
+public class Vosk {
 
     private Model model;
     private Recognizer recognizer;
     private SpeechService speechService;
-    private boolean isListening = false;
-    private StringBuilder partialResults = new StringBuilder();
-    private String finalResult = "";
 
-    // Método para iniciar o modelo
+    private boolean isListening = false;
+    private volatile boolean modelReady = false;
+
     public void initModel(Context context) {
         try {
-            AssetManager assetManager = context.getAssets();
-            StorageService.unpack(context, "vosk-model-small-pt", "model",
-                    (unpackedModel) -> {
-                        this.model = unpackedModel;
-                        Log.d("Vosk", "Model load successfully");
-                    },
-                    (exception) -> {
-                        throw new RuntimeException("Error no model:" + exception.getMessage());
-                    });
+            StorageService.unpack(
+                context,
+                "vosk-model-small-pt",
+                "model",
+                (unpackedModel) -> {
+                    this.model = unpackedModel;
+                    this.modelReady = true;
+                    Log.d("Vosk", "Model loaded successfully");
+                },
+                (exception) -> {
+                    this.modelReady = false;
+                    Log.e("Vosk", "Error unpacking model: " + exception.getMessage());
+                }
+            );
         } catch (Exception e) {
-            throw new RuntimeException("Error on initiate the model: " + e.getMessage());
+            this.modelReady = false;
+            Log.e("Vosk", "Error initiating model: " + e.getMessage());
         }
     }
 
-    // Inicia o reconhecimento de voz
-    public void startListening(RecognitionListener listener) throws IOException {
+    public boolean isModelReady() {
+        return modelReady && model != null;
+    }
 
-        if (model == null) {
-            throw new RuntimeException("Error on initiate the model");
+    public void startListening(RecognitionListener listener) throws IOException {
+        if (!isModelReady()) {
+            throw new RuntimeException("Model is not ready");
+        }
+
+        // если уже слушаем — остановить предыдущую сессию
+        if (speechService != null) {
+            stopListening();
         }
 
         recognizer = new Recognizer(model, 16000.0f);
@@ -54,8 +63,15 @@ public class Vosk implements RecognitionListener {
     }
 
     public void stopListening() {
-        if (speechService != null) {
-            speechService.stop();
+        try {
+            if (speechService != null) {
+                speechService.stop();
+                // если в твоей версии есть shutdown() — лучше:
+                // speechService.shutdown();
+            }
+        } finally {
+            speechService = null;
+            recognizer = null;
             isListening = false;
         }
     }
@@ -63,61 +79,11 @@ public class Vosk implements RecognitionListener {
     public void pause(boolean checked) {
         if (speechService != null) {
             speechService.setPause(checked);
-            if (checked){
-                isListening = false;
-            } else {
-                isListening = true;
-            }
         }
+        isListening = !checked;
     }
 
-    /*Resets recognizer in a thread, starts recognition over again*/
-    public void reset() {
-        if (speechService != null) {
-            speechService.reset();
-        }
-    }
-
-    @Override
-    public void onPartialResult(String hypothesis) {
-        if (hypothesis != null && !hypothesis.isEmpty()) {
-            partialResults.append(hypothesis).append(" ");
-        }
-    }
-
-    @Override
-    public void onResult(String hypothesis) {
-        finalResult = hypothesis;
-    }
-
-    @Override
-    public void onFinalResult(String hypothesis) {
-        finalResult = hypothesis;
-    }
-
-    @Override
-    public void onError(Exception exception) {
-        Log.e("Vosk", "Error on speech recognition" + exception.getMessage());
-    }
-
-    @Override
-    public void onTimeout() {
-        Log.e("Vosk", "Expired");
-    }
-
-    // Getter para o estado de escuta
     public boolean isListening() {
         return isListening;
     }
-
-    public String getPartialResults() {
-        return partialResults.toString();
-    }
-
-    public String getFinalResult() {
-        return finalResult;
-    }
-
-
-
 }

@@ -20,6 +20,7 @@ apply plugin: 'com.android.library'
 android {
     namespace "com.mitmynid.plugins.vosk"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
+
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 22
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
@@ -27,25 +28,31 @@ android {
         versionName "1.0"
         ndkVersion = "25.2.9519653"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64', 'x86'
         }
     }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
     lintOptions {
         abortOnError false
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
     sourceSets {
         main {
+            // оставляем генерацию uuid в buildDir
             assets.srcDirs += "$buildDir/generated/assets"
         }
     }
@@ -54,30 +61,28 @@ android {
 repositories {
     google()
     mavenCentral()
-    gradlePluginPortal() 
 }
-
 
 dependencies {
     implementation 'net.java.dev.jna:jna:5.13.0@aar'
     implementation group: 'com.alphacephei', name: 'vosk-android', version: '0.3.47'
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation project(':capacitor-android')
+
+    // ✅ ВАЖНО для Capacitor 8: зависимость через Maven-артефакт
+    implementation "com.getcapacitor:capacitor-android:${project.hasProperty('capacitorVersion') ? rootProject.ext.capacitorVersion : '8.0.0'}"
+
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
 }
 
-def modelDir = "${projectDir}/src/main/assets/vosk-model-small-pt"
 def generatedDir = "${buildDir}/generated/assets/vosk-model-small-pt"
-
 
 tasks.register('genUUID') {
     def uuid = UUID.randomUUID().toString()
-    def odir = file("$buildDir/generated/assets/vosk-model-small-pt")
-    def ofile = file("$odir/uuid")
-    println("ofile: "+ ofile)
+    def odir = file(generatedDir)
+    def ofile = file("$generatedDir/uuid")
     doLast {
         mkdir odir
         ofile.text = uuid

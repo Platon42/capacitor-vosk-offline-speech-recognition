@@ -2,12 +2,7 @@ package com.mitmynid.plugins.vosk;
 
 import android.Manifest;
 import android.content.Context;
-import android.content.pm.PackageManager;
-import android.speech.SpeechRecognizer;
 import android.util.Log;
-
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -16,145 +11,155 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 import org.vosk.android.RecognitionListener;
 
-@CapacitorPlugin(name = "Vosk", permissions = { @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "speechRecognition") })
+@CapacitorPlugin(
+        name = "VoskOfflineSpeechRecognition",
+        permissions = {
+                @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "speechRecognition")
+        }
+)
 public class VoskPlugin extends Plugin {
 
-    private Vosk voskImplementation = new Vosk();
-
+    private final Vosk voskImplementation = new Vosk();
 
     @Override
     public void load() {
         super.load();
-        bridge
-                .getWebView()
-                .post(
-                        () -> {
-                            Context context = getContext();
-                            voskImplementation.initModel(context);
-                        }
-                );
+        try {
+            voskImplementation.initModel(getContext());
+        } catch (RuntimeException e) {
+            Log.e("Vosk", "Failed to init model on load: " + e.getMessage());
+        }
     }
 
-    // Initialize speech recognition model
-    // Does not use because now the model is loaded on plugin load(). Can use it after when i wanna especify the model on ionic interface
+    /**
+     * Метод, который ожидает JS: requestPermissions()
+     */
     @PluginMethod
-    public void initModel(PluginCall call) {
-        Context context = getContext();
-        try {
-            voskImplementation.initModel(context);
-            call.resolve();
-        } catch (RuntimeException e) {
-            call.reject("Failed to initialize model: " + e.getMessage());
-        }
+    public void requestPermissions(PluginCall call) {
+        requestPermissionForAlias("speechRecognition", call, "permissionsCallback");
+    }
+
+    @PermissionCallback
+    private void permissionsCallback(PluginCall call) {
+        JSObject result = new JSObject();
+        PermissionState state = getPermissionState("speechRecognition");
+        result.put("speechRecognition", state == null ? "prompt" : state.toString().toLowerCase());
+        call.resolve(result);
     }
 
     @PluginMethod
     public void available(PluginCall call) {
-        boolean val = isSpeechRecognitionAvailable();
         JSObject result = new JSObject();
-        result.put("available", val);
+
+        // ВАЖНО: SpeechRecognizer тут не нужен для Vosk, но оставим "как мягкую проверку".
+        // Главный критерий — готовность модели.
+        boolean modelReady = voskImplementation.isModelReady();
+
+        result.put("available", modelReady);
         call.resolve(result);
     }
 
-    private boolean isSpeechRecognitionAvailable() {
-        return SpeechRecognizer.isRecognitionAvailable(bridge.getContext());
-    }
-
-    // Start microphone listening
     @PluginMethod
     public void startListening(PluginCall call) {
         try {
-
-            if (!isSpeechRecognitionAvailable()) {
-                call.unavailable("Speech recognition service is not available.");
-                return;
-
-            }
+            // Permission check
             if (getPermissionState("speechRecognition") != PermissionState.GRANTED) {
-                call.reject("requestPermission");
+                call.reject("Microphone permission not granted");
+                return;
+            }
+
+            // Model ready check
+            if (!voskImplementation.isModelReady()) {
+                call.reject("Model is not ready yet");
                 return;
             }
 
             RecognitionListener recognitionListener = new RecognitionListener() {
-                /*Called when partial recognition result is available.*/
+
                 @Override
                 public void onPartialResult(String hypothesis) {
-                    if (hypothesis != null && !hypothesis.isEmpty()) {
-                        try {
-                            JSObject hypothesisObj = new JSObject(hypothesis);
-                            String partialResult = hypothesisObj.getString("partial");
+                    if (hypothesis == null || hypothesis.isEmpty()) return;
 
-                            JSObject result = new JSObject();
-                            result.put("matches", partialResult);
+                    try {
+                        JSObject hypothesisObj = new JSObject(hypothesis);
+                        String partial = hypothesisObj.optString("partial", "");
 
-                            notifyListeners("partialResult", result);
+                        JSObject payload = new JSObject();
+                        payload.put("value", partial);
 
-                            Log.d("Vosk", "Partial result enviado para listener: " + result);
-                        } catch (Exception e) {
-                            call.reject("Failed to process partial result: " + e.getMessage());
-                        }
+                        notifyListeners("partialResult", payload);
+                    } catch (Exception e) {
+                        JSObject payload = new JSObject();
+                        payload.put("error", "Failed to parse partial result: " + e.getMessage());
+                        notifyListeners("error", payload);
                     }
                 }
 
-                /*Called after silence occured*/
                 @Override
                 public void onResult(String hypothesis) {
-                    //Log.d("Vosk", "result: " + hypothesis);
-                    try {
-                        JSObject hypothesisObj = new JSObject(hypothesis);
-                        String resultText = hypothesisObj.getString("text");
-
-                        JSObject result = new JSObject();
-                        result.put("result", resultText);
-
-                        notifyListeners("onResult", result);
-                        Log.d("Vosk", "result: " + result);
-                    } catch (Exception e) {
-                        //Log.e("Vosk", "Erro ao processar hypothesis: " + e.getMessage());
-                        call.reject("Failed to process result: " + e.getMessage());
-                    }
+                    // промежуточный “final-like” результат
+                    emitFinal(hypothesis);
                 }
 
-                /*Called after stream end*/
                 @Override
                 public void onFinalResult(String hypothesis) {
+                    emitFinal(hypothesis);
+                }
+
+                private void emitFinal(String hypothesis) {
+                    if (hypothesis == null || hypothesis.isEmpty()) return;
+
                     try {
                         JSObject hypothesisObj = new JSObject(hypothesis);
-                        String finalText = hypothesisObj.getString("text");
+                        String text = hypothesisObj.optString("text", "");
+                        if (text == null || text.trim().isEmpty()) return;
 
-                        JSObject result = new JSObject();
-                        result.put("final", finalText);
+                        JSObject payload = new JSObject();
+                        payload.put("value", text);
 
-                        notifyListeners("finalResult", result);
+                        // ✅ JS слушает "onResult"
+                        notifyListeners("onResult", payload);
                     } catch (Exception e) {
-                        //Log.e("Vosk", "Erro ao processar hypothesis: " + e.getMessage());
-                        call.reject("Failed to process final result: " + e.getMessage());
+                        JSObject payload = new JSObject();
+                        payload.put("error", "Failed to parse final result: " + e.getMessage());
+                        notifyListeners("error", payload);
                     }
                 }
 
                 @Override
                 public void onError(Exception exception) {
-                    Log.e("Vosk", "Speech recognition error: " + exception.getMessage());
-                    call.reject("Speech recognition error: " + exception.getMessage());
+                    String msg = exception != null ? exception.getMessage() : "Unknown error";
+                    Log.e("Vosk", "Speech recognition error: " + msg);
+
+                    JSObject payload = new JSObject();
+                    payload.put("error", msg);
+                    notifyListeners("error", payload);
                 }
 
                 @Override
                 public void onTimeout() {
                     Log.e("Vosk", "Speech recognition timed out.");
-                    call.reject("Speech recognition timed out.");
+
+                    JSObject payload = new JSObject();
+                    payload.put("error", "Speech recognition timed out");
+                    notifyListeners("error", payload);
                 }
             };
+
             voskImplementation.startListening(recognitionListener);
+
+            // ✅ Важно: resolve сразу, а результаты идут через listeners
+            call.resolve();
 
         } catch (Exception e) {
             call.reject("Failed to start speech recognition: " + e.getMessage());
         }
     }
 
-    // Stop microphone listening
     @PluginMethod
     public void stopListening(PluginCall call) {
         try {
@@ -185,12 +190,10 @@ public class VoskPlugin extends Plugin {
         }
     }
 
-    // Check if recognition is active
     @PluginMethod
     public void isListening(PluginCall call) {
-        boolean isListening = voskImplementation.isListening();
         JSObject ret = new JSObject();
-        ret.put("isListening", isListening);
+        ret.put("isListening", voskImplementation.isListening());
         call.resolve(ret);
     }
 }
